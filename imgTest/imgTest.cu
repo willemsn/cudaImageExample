@@ -294,8 +294,10 @@ int main(int argc, char *argv[])
     // =====================================================
     kSTime = std::chrono::steady_clock::now();  
 
-    if (deviceCount == 2 && useManaged)
+    if (deviceCount == 2 && useManaged) {
+        std::cout << "Running second kernel on second device." << std::endl;
         cudaSetDevice(1);
+    }
        
     if (writeToOneOutput) {
       lighten<<<numBlocks, BLOCK_SIZE>>>(hd_input0+numElements/2, hd_output0+numElements/2, numElements/2);
