@@ -62,8 +62,20 @@ else(PNG_FOUND)
   message(STATUS "Could not find the PNG Libraries!")
 endif(PNG_FOUND)
 
+# Boost
+FIND_PACKAGE(Boost REQUIRED program_options)
+IF(${Boost_FOUND})
+  INCLUDE_DIRECTORIES(${Boost_INCLUDE_DIR})
+  MESSAGE(STATUS "Found Boost Libraries in ${Boost_LIBRARY_DIR}, Version ${Boost_VERSION}")
+ENDIF()
+
+
+include_directories(${CMAKE_SOURCE_DIR})
 CUDA_ADD_EXECUTABLE(imgTest
+  ArgumentParsing.h ArgumentParsing.cpp
+  imgTest/ArgsImgTest.h imgTest/ArgsImgTest.cpp
   imgTest/imgTest.cu
   )
+target_link_libraries(imgTest ${Boost_LIBRARIES})
 target_link_libraries(imgTest ${PNG_LIBRARY})
 target_link_libraries(imgTest ${ZLIB_LIBRARY})

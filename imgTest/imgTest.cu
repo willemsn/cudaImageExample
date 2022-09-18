@@ -1,7 +1,24 @@
-/*
+/****************************************************************************
  * Created by Pete Willemsen on 06/27/22
+ * Copyright (c) 2022 Pete Willemsen
  *
- */
+ * This file is part of cudaImageExample
+ *
+ * cudaImageExample is free software: you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ * 
+ * cudaImageExample is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+ * General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with cudaImageExample. If not, see
+ * <https://www.gnu.org/licenses/>.
+ *
+ ****************************************************************************/
 
 #include <iostream>
 #include <cstdlib>
@@ -13,6 +30,8 @@
 #include <cuda_runtime.h>
 
 #include "png++/png.hpp"
+
+#include "ArgsImgTest.h"
 
 struct PixelData 
 {
@@ -60,6 +79,9 @@ void runScenario1()
 
 int main(int argc, char *argv[])
 {
+    ArgsImgTest args;
+    args.process(argc, argv);
+
     int deviceCount = 0;
     cudaError_t error_id = cudaGetDeviceCount(&deviceCount);
 
@@ -137,18 +159,13 @@ int main(int argc, char *argv[])
 
     cudaSetDevice(0);
 
-    if (argc != 2) { std::cerr << "Need a file name for a PNG image to operate on!  Exiting!" << std::endl; }
-    std::string fname = argv[1];
-
-    bool writeToOneOutput = false;
-    if (argc == 3)
-      // turn on write to one image
-      writeToOneOutput = true;
+    bool writeToOneOutput = args.writeToOneOutput;
+    std::cout << "Writing to one output = " << writeToOneOutput << std::endl;
     
-    std::cout << "Reading image from file: " << fname << std::endl;
+    std::cout << "Reading image from file: " << args.inputFileName << std::endl;
     png::image< png::rgb_pixel > inputImage;
 
-    inputImage.read( fname );
+    inputImage.read( args.inputFileName );
 
     int imageWidth = inputImage.get_width();
     int imageHeight = inputImage.get_height();
@@ -294,7 +311,7 @@ int main(int argc, char *argv[])
     // =====================================================
     kSTime = std::chrono::steady_clock::now();  
 
-    if (deviceCount == 2 && useManaged) {
+    if (deviceCount == 2 && args.numGPUs == 2 && useManaged) {
         std::cout << "Running second kernel on second device." << std::endl;
         cudaSetDevice(1);
     }
@@ -316,7 +333,7 @@ int main(int argc, char *argv[])
     kSTime = std::chrono::steady_clock::now();  
     cudaErrorVal = cudaDeviceSynchronize();
     std::cout << "Sync: " << cudaGetErrorName(cudaErrorVal) << std::endl;
-    if (deviceCount == 2 && useManaged) {
+    if (deviceCount == 2 && args.numGPUs == 2 && useManaged) {
         cudaErrorVal = cudaDeviceSynchronize();
         std::cout << "Sync2: " << cudaGetErrorName(cudaErrorVal) << std::endl;
     }
