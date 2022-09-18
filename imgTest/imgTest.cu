@@ -50,6 +50,14 @@ __global__ void lighten(float *a, float *b, int N)
     }
 }
 
+
+void runScenario1()
+{
+
+}
+
+
+
 int main(int argc, char *argv[])
 {
     int deviceCount = 0;
@@ -128,10 +136,14 @@ int main(int argc, char *argv[])
     }
 
     cudaSetDevice(0);
-    
 
     if (argc != 2) { std::cerr << "Need a file name for a PNG image to operate on!  Exiting!" << std::endl; }
     std::string fname = argv[1];
+
+    bool writeToOneOutput = false;
+    if (argc == 3)
+      // turn on write to one image
+      writeToOneOutput = true;
     
     std::cout << "Reading image from file: " << fname << std::endl;
     png::image< png::rgb_pixel > inputImage;
@@ -149,7 +161,7 @@ int main(int argc, char *argv[])
     }
 
     // 
-    // Run on 1 gpu with memory allocated on that GPU
+    // Memory allocation
     // 
     auto mSTime = std::chrono::steady_clock::now();  
 
@@ -277,7 +289,7 @@ int main(int argc, char *argv[])
     std::cout << "Kernel0 Launch: " << cudaGetErrorName(cudaGetLastError()) << std::endl;
 
     auto kETime = std::chrono::steady_clock::now();
-    std::cout << "Kernel time: " << std::chrono::duration_cast<std::chrono::milliseconds>(kETime - kSTime).count() << " msec" << std::endl;
+    std::cout << "Kernel0 time: " << std::chrono::duration_cast<std::chrono::milliseconds>(kETime - kSTime).count() << " msec" << std::endl;
   
     // =====================================================
     kSTime = std::chrono::steady_clock::now();  
@@ -285,23 +297,30 @@ int main(int argc, char *argv[])
     if (deviceCount == 2 && useManaged)
         cudaSetDevice(1);
        
-    lighten<<<numBlocks, BLOCK_SIZE>>>(hd_input1+numElements/2, hd_output1+numElements/2, numElements/2);
+    if (writeToOneOutput) {
+      lighten<<<numBlocks, BLOCK_SIZE>>>(hd_input0+numElements/2, hd_output0+numElements/2, numElements/2);
+    }
+    else {
+      lighten<<<numBlocks, BLOCK_SIZE>>>(hd_input1+numElements/2, hd_output1+numElements/2, numElements/2);
+    }
     // darken<<<numBlocks, BLOCK_SIZE>>>(hd_input0, hd_output0, numElements/2);
     std::cout << "Kernel1 Launch: " << cudaGetErrorName(cudaGetLastError()) << std::endl;
 
+    kETime = std::chrono::steady_clock::now();
+    std::cout << "Kernel1 time: " << std::chrono::duration_cast<std::chrono::milliseconds>(kETime - kSTime).count() << " msec" << std::endl;
+
+
     // Sync
+    kSTime = std::chrono::steady_clock::now();  
     cudaErrorVal = cudaDeviceSynchronize();
     std::cout << "Sync: " << cudaGetErrorName(cudaErrorVal) << std::endl;
     if (deviceCount == 2 && useManaged) {
         cudaErrorVal = cudaDeviceSynchronize();
         std::cout << "Sync2: " << cudaGetErrorName(cudaErrorVal) << std::endl;
     }
-    
-    
     kETime = std::chrono::steady_clock::now();
-    std::cout << "Kernel time: " << std::chrono::duration_cast<std::chrono::milliseconds>(kETime - kSTime).count() << " msec" << std::endl;
-
-
+    std::cout << "Sync time: " << std::chrono::duration_cast<std::chrono::milliseconds>(kETime - kSTime).count() << " msec" << std::endl;
+    
     // //////////////////////////////////////////////////////
     //
     // Write out all image data back to PNG files
@@ -317,9 +336,12 @@ int main(int argc, char *argv[])
     std::cout << "Mem time: " << std::chrono::duration_cast<std::chrono::milliseconds>(mETime - mSTime).count() << " msec" << std::endl;
 
 
+
     // 
     // write out the image data from the kernel operations
-    // 
+    //
+    mSTime = std::chrono::steady_clock::now();  
+    
     png::image< png::rgb_pixel > outImage00( imageWidth, imageHeight );
     png::image< png::rgb_pixel > outImage01( imageWidth, imageHeight );
     for (auto y=0; y<imageHeight; ++y) {
@@ -338,6 +360,9 @@ int main(int argc, char *argv[])
     }
     outImage00.write( "gpuOutputImage_00.png" );
     outImage01.write( "gpuOutputImage_01.png" );
+
+    mETime = std::chrono::steady_clock::now();
+    std::cout << "Image Write time: " << std::chrono::duration_cast<std::chrono::milliseconds>(mETime - mSTime).count() << " msec" << std::endl;    
     
     cudaFree(hd_input0);
     cudaFree(hd_output0);
