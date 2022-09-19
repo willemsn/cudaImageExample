@@ -26,6 +26,8 @@
 #include <string>
 #include <chrono>
 
+#include <thread>
+
 #include <cuda.h>
 #include <cuda_runtime.h>
 
@@ -70,11 +72,31 @@ __global__ void lighten(float *a, float *b, int N)
 }
 
 
-void runScenario1()
+void launchDarken(int numBlocks, int BLOCK_SIZE, float* input, float *output, int N, int dev)
 {
+  auto kSTime = std::chrono::steady_clock::now();  
 
+  cudaSetDevice(dev);
+
+  darken<<<numBlocks, BLOCK_SIZE>>>(input, output, N);
+  std::cout << "Kernel Launch (darken): " << cudaGetErrorName(cudaGetLastError()) << std::endl;
+
+  auto kETime = std::chrono::steady_clock::now();
+  std::cout << "Kernel (darken) time: " << std::chrono::duration_cast<std::chrono::milliseconds>(kETime - kSTime).count() << " msec" << std::endl;
 }
 
+void launchLighten(int numBlocks, int BLOCK_SIZE, float* input, float *output, int N, int dev)
+{
+  auto kSTime = std::chrono::steady_clock::now();
+  
+  cudaSetDevice(dev);
+  
+  lighten<<<numBlocks, BLOCK_SIZE>>>(input, output, N);
+  std::cout << "Kernel Launch (lighten): " << cudaGetErrorName(cudaGetLastError()) << std::endl;
+
+  auto kETime = std::chrono::steady_clock::now();
+  std::cout << "Kernel (lighten) time: " << std::chrono::duration_cast<std::chrono::milliseconds>(kETime - kSTime).count() << " msec" << std::endl;
+}
 
 
 int main(int argc, char *argv[])
@@ -298,47 +320,42 @@ int main(int argc, char *argv[])
     int numBlocks = (numElements/2 + BLOCK_SIZE - 1) / BLOCK_SIZE;
     std::cout << "Num Blocks: " << numBlocks << ", BLOCK_SIZE = " << BLOCK_SIZE << std::endl;
 
-    // =====================================================
-    auto kSTime = std::chrono::steady_clock::now();  
-
-    // lighten<<<numBlocks, BLOCK_SIZE>>>(hd_input1, hd_output1, numElements/2);
-    darken<<<numBlocks, BLOCK_SIZE>>>(hd_input0, hd_output0, numElements/2);
-    std::cout << "Kernel0 Launch: " << cudaGetErrorName(cudaGetLastError()) << std::endl;
-
-    auto kETime = std::chrono::steady_clock::now();
-    std::cout << "Kernel0 time: " << std::chrono::duration_cast<std::chrono::milliseconds>(kETime - kSTime).count() << " msec" << std::endl;
-  
-    // =====================================================
-    kSTime = std::chrono::steady_clock::now();  
-
     if (deviceCount == 2 && args.numGPUs == 2 && useManaged) {
-        std::cout << "Running second kernel on second device." << std::endl;
-        cudaSetDevice(1);
-    }
-       
-    if (writeToOneOutput) {
-      lighten<<<numBlocks, BLOCK_SIZE>>>(hd_input0+numElements/2, hd_output0+numElements/2, numElements/2);
-    }
-    else {
-      lighten<<<numBlocks, BLOCK_SIZE>>>(hd_input1+numElements/2, hd_output1+numElements/2, numElements/2);
-    }
-    // darken<<<numBlocks, BLOCK_SIZE>>>(hd_input0, hd_output0, numElements/2);
-    std::cout << "Kernel1 Launch: " << cudaGetErrorName(cudaGetLastError()) << std::endl;
 
-    kETime = std::chrono::steady_clock::now();
-    std::cout << "Kernel1 time: " << std::chrono::duration_cast<std::chrono::milliseconds>(kETime - kSTime).count() << " msec" << std::endl;
+      std::thread k0Thread(&launchDarken, numBlocks, BLOCK_SIZE, hd_input0, hd_output0, numElements/2, 0);
+      std::thread k1Thread(&launchLighten, numBlocks, BLOCK_SIZE, hd_input0+numElements/2, hd_output0+numElements/2, numElements/2, 1 );
 
-
-    // Sync
-    kSTime = std::chrono::steady_clock::now();  
-    cudaErrorVal = cudaDeviceSynchronize();
-    std::cout << "Sync: " << cudaGetErrorName(cudaErrorVal) << std::endl;
-    if (deviceCount == 2 && args.numGPUs == 2 && useManaged) {
+      // Sync
+      auto kSTime = std::chrono::steady_clock::now();  
+      cudaErrorVal = cudaDeviceSynchronize();
+      std::cout << "Sync: " << cudaGetErrorName(cudaErrorVal) << std::endl;
+      if (deviceCount == 2 && args.numGPUs == 2 && useManaged) {
         cudaErrorVal = cudaDeviceSynchronize();
         std::cout << "Sync2: " << cudaGetErrorName(cudaErrorVal) << std::endl;
+      }
+      auto kETime = std::chrono::steady_clock::now();
+      std::cout << "Sync time: " << std::chrono::duration_cast<std::chrono::milliseconds>(kETime - kSTime).count() << " msec" << std::endl;
+
+      k0Thread.join();
+      k1Thread.join();
+      
     }
-    kETime = std::chrono::steady_clock::now();
-    std::cout << "Sync time: " << std::chrono::duration_cast<std::chrono::milliseconds>(kETime - kSTime).count() << " msec" << std::endl;
+    else {
+
+      // =====================================================
+      launchDarken( numBlocks, BLOCK_SIZE, hd_input0, hd_output0, numElements/2, 0 );
+
+      // =====================================================       
+      launchLighten( numBlocks, BLOCK_SIZE, hd_input0+numElements/2, hd_output0+numElements/2, numElements/2, 0 );
+
+      // Sync
+      auto kSTime = std::chrono::steady_clock::now();  
+      cudaErrorVal = cudaDeviceSynchronize();
+      std::cout << "Sync: " << cudaGetErrorName(cudaErrorVal) << std::endl;
+      auto kETime = std::chrono::steady_clock::now();
+      std::cout << "Sync time: " << std::chrono::duration_cast<std::chrono::milliseconds>(kETime - kSTime).count() << " msec" << std::endl;
+
+    }
     
     // //////////////////////////////////////////////////////
     //
